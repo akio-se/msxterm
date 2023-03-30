@@ -9,16 +9,13 @@
 #![allow(dead_code)]
 //
 
-use std::cmp::Ordering;
-//use std::io::BufReader;
-use std::io::{BufRead, Write};
 use std::net::{Shutdown, TcpStream};
 use std::thread;
-//use std::time::Duration;
-//use std::fmt::Display::{OsStr};
+//use std::sync::Arc;
 use rustyline::{DefaultEditor, ExternalPrinter, Result, error::ReadlineError};
 use clap::Parser;
-//use std::ffi::OsStr;
+use std::fs::File;
+use std::io::{BufRead, Write, BufReader};
 
 const C_TAB: char = '\u{0009}';
 const C_CR: char = '\u{000d}';
@@ -27,6 +24,7 @@ const C_LF: char = '\u{000a}';
 const U_BREAK:u8 = 0x03;
 const U_BS:u8 = 0x08;
 const U_CR:u8 = 0x0d;
+const U_LF:u8 = 0x0a;
 
 const MSX_UTF8: [char; 256] = [
     '\u{0000}','\u{0001}','\u{0002}','\u{0003}','\u{0004}','\u{0005}','\u{0006}','\u{0007}',
@@ -74,6 +72,25 @@ fn msx_asci_test()
     assert!(s == "AQaq♠♥♣♦○●");
 }
 
+fn dump_hex(uv: Vec<u8>) -> String
+{
+    let mut cv:String = "".to_string();
+    for u in uv {
+        let tmp = format!("{:02X} ", u);
+        cv.push_str(tmp.as_str());
+    }
+    cv
+}
+
+#[test]
+fn test_dump_hex() {
+    let uv: Vec<u8> = [0x41,0x51,0x61,0x71,0x80,0x81,0x8A,0xB3,0xC4,0x55].to_vec();
+    let s = dump_hex(uv);
+    println!("{}",s);
+    assert!(s == "41 51 61 71 80 81 8A B3 C4 55 ");
+}
+
+
 #[test]
 fn test_hex () {
     let s = "#HEX 40 41 42 43 44";
@@ -93,6 +110,7 @@ fn hex2u8(hex: &str) -> Vec<u8> {
     hex_vec
 }
 
+
 fn ascii_check() {
     let s = "Hello, こんにちは！";
     for c in s.chars() {
@@ -103,45 +121,19 @@ fn ascii_check() {
         }
     }
 }
-#[test]
-fn hiragana() {
-    let s = "Hello, こんにちは！";
-    let mut hiragana_chars: Vec<char> = Vec::new();
 
-    for c in s.chars() {
-        if c.is_ascii() {
-            continue;
-        }
-        let k = c.to_string();
-        let bytes= k.as_bytes();
-        if bytes.len() == 3 && bytes[0] == 0xE3 && bytes[1] >= 0x81 && bytes[1] <= 0x82 && bytes[2] >= 0x80 && bytes[2] <= 0x9F {
-            hiragana_chars.push(c);
-        }
+fn load(command_line: &str) -> Result<Vec<String>> {
+    let tokens: Vec<&str> = command_line.split(" ").collect();
+    let token = tokens[1];
+    let file = File::open(token).unwrap();
+    let reader = BufReader::new(file);       
+    let mut lines = Vec::new();
+    for line in reader.lines() {
+        lines.push(line?);
     }
-    println!("Hiragana characters: {:?}", hiragana_chars);
+    Ok(lines)
 }
-#[test]
-fn hiragana2() {
-    let s = "こんにちは、世界！";
-    let mut hiragana_chars: Vec<char> = Vec::new();
 
-    for c in s.chars() {
-        if c.is_ascii() {
-            // ASCII文字は処理しない
-            continue;
-        } else {
-            let bytes = c.to_string().into_bytes();
-            if bytes.len() > 3 && bytes[0] == 0xE3 && bytes[1] >= 0x81 && bytes[1] <= 0x82 {
-                // ひらがなかどうかを判定する
-                if bytes[2] >= 0x81 && bytes[2] <= 0x9F || bytes[2] >= 0xE0 && bytes[2] <= 0xEF {
-                    hiragana_chars.push(c);
-                }
-            }
-        }
-    }
-
-    println!("Hiragana characters: {:?}", hiragana_chars);
-}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -152,8 +144,17 @@ struct Args {
     filename: String,
 }
 
+struct Msxterm {
+    dump_mode:bool,
+}
+
 
 fn main() -> Result<()> {
+    // 変数初期化
+    let mut msxterm = Msxterm { 
+        dump_mode: false
+    };
+
     // コマンドライン引数取得
     let args = Args::parse();
     println!("{}", args.host);
@@ -182,36 +183,23 @@ fn main() -> Result<()> {
             return Ok(());
         }, 
     }
-    let stream_clone = stream.try_clone().expect("Failed to clone stream");
-    let last_line: String = String::new();
 
     // 受信用スレッドを作成
+    let stream_clone = stream.try_clone().expect("Failed to clone stream");
     let receive_thread = thread::spawn(move || {
         let mut reader = std::io::BufReader::new(&stream_clone);
         loop {
             let mut byte_buff: Vec<u8> = [0x00_u8; 0].to_vec();
-            let size = reader.read_until(U_CR, &mut byte_buff).unwrap();
+            let size = reader.read_until(U_LF, &mut byte_buff).unwrap();
             if size == 0 {
                 break;
             }
-            let recv_buff = msx_ascii_to_string(byte_buff).trim().to_string();
-/*
-
-            let mut recv_buff = String::new();
-            let size = reader.read_line(&mut recv_buff).unwrap();
-            if size == 0 {
-                break;
-            }
-            recv_buff = recv_buff.trim().to_string();
-*/
-            //let tmp = rl.history().);
-            if recv_buff.cmp(&last_line) == Ordering::Equal {
-                printer
-                    .print("--".to_string())
-                    .expect("External print failure");
+            if msxterm.dump_mode {
+                let recv_buff = dump_hex(byte_buff);
+                printer.print(recv_buff).expect("External print failure");
             } else {
-                let s = format!("{} {}", recv_buff, last_line);
-                printer.print(s).expect("External print failure");
+                let recv_buff = msx_ascii_to_string(byte_buff).trim().to_string();
+                printer.print(recv_buff).expect("External print failure");    
             }
         }
     });
@@ -228,8 +216,7 @@ fn main() -> Result<()> {
                 for line in lines {
                     rl.add_history_entry(line)?;
 
-                    //println!("Line: {line}");
-                    if line == "#quit" {
+                    if line.starts_with("#quit") {
                         // TCP 接続終了
                         stream.shutdown(Shutdown::Both)?;
                         break 'input;
@@ -239,6 +226,31 @@ fn main() -> Result<()> {
                         stream.write(&hex)?;
                         continue;
                     }
+                    if line.starts_with("#dump_on") {
+                        msxterm.dump_mode = true;
+                        continue;             
+                    }
+                    if line.starts_with("#dump_off") {
+                        msxterm.dump_mode = false;
+                        continue;             
+                    }
+                    if line.starts_with("#clear_history") {
+                        rl.clear_history().unwrap();
+                        continue;
+                    }
+                    if line.starts_with("#load") {
+                        let basic = load(line).unwrap();
+                        for bl in basic {
+                            let mut tmp = bl.trim().to_string();
+                            rl.add_history_entry(tmp.as_str())?;
+                            tmp.push(C_CR);
+                            stream
+                            .write(tmp.as_bytes())
+                            .expect("Failed to write to server");
+                        }
+                        continue;
+                    }
+
                     let mut tmp2 = line.to_string();
                     tmp2.push(C_CR);
                     stream
