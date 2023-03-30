@@ -4,6 +4,11 @@
 // https://github.com/akio-se/msxterm
 //
 
+// 初期開発中は Warnning 抑制
+#![allow(unused_variables)]
+#![allow(dead_code)]
+//
+
 use std::cmp::Ordering;
 //use std::io::BufReader;
 use std::io::{BufRead, Write};
@@ -14,7 +19,6 @@ use std::thread;
 use rustyline::{DefaultEditor, ExternalPrinter, Result, error::ReadlineError};
 use clap::Parser;
 //use std::ffi::OsStr;
-
 
 const C_TAB: char = '\u{0009}';
 const C_CR: char = '\u{000d}';
@@ -106,25 +110,11 @@ struct Args {
 
 
 fn main() -> Result<()> {
-    // Clap
+    // コマンドライン引数取得
     let args = Args::parse();
     println!("{}", args.host);
     println!("{}", args.filename);
- /* 
-    let matches = App::new("msxterm")
-        .about("CUI Terminal for MSX0")
-        .bin_name("kiro")
-        .arg(Arg::with_name("host").required(true))
-        .arg(Arg::with_name("file").required(false))
-        .arg(Arg::with_name("tty").required(false))
-        .get_matches();
-    
-        let host = matches.value_of("host").unwrap().to_string();
-        let file_path = matches.value_of("file").unwrap().to_string();
- */
-    //let file_path = "history.txt";
-    //let host = "192.168.128.7:2223";
-
+ 
     // エディタを生成
     let mut rl = DefaultEditor::new()?;
     let mut printer = rl.create_external_printer()?;
@@ -135,7 +125,19 @@ fn main() -> Result<()> {
 
     // ソケットを接続
     let server_address = args.host;
-    let mut stream = TcpStream::connect(server_address).expect("Failed to connect to server");
+    println!("Connecting... {}", server_address);
+    let mut stream;
+    let r = TcpStream::connect(server_address);
+    match r {
+        Ok(s) => {
+            stream = s;
+            println!("connected.");
+        },
+        Err(e) => {
+            eprintln!("Failed to connect.");
+            return Ok(());
+        }, 
+    }
     let stream_clone = stream.try_clone().expect("Failed to clone stream");
     let last_line: String = String::new();
 
