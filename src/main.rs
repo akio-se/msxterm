@@ -8,6 +8,7 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 //
+mod msxcode;
 
 use std::net::{Shutdown, TcpStream};
 use std::thread;
@@ -17,60 +18,12 @@ use clap::Parser;
 use std::fs::File;
 use std::io::{BufRead, Write, BufReader};
 
-const C_TAB: char = '\u{0009}';
 const C_CR: char = '\u{000d}';
-const C_LF: char = '\u{000a}';
 
 const U_BREAK:u8 = 0x03;
 const U_BS:u8 = 0x08;
-const U_CR:u8 = 0x0d;
 const U_LF:u8 = 0x0a;
 
-const MSX_UTF8: [char; 256] = [
-    '\u{0000}','\u{0001}','\u{0002}','\u{0003}','\u{0004}','\u{0005}','\u{0006}','\u{0007}',
-    '\u{0008}','\u{0009}','\u{000a}','\u{000b}','\u{000c}','\u{000d}','\u{000e}','\u{000f}',
-    '\u{0010}','\u{0011}','\u{0012}','\u{0013}','\u{0014}','\u{0015}','\u{0016}','\u{0017}',
-    '\u{0018}','\u{0019}','\u{001a}','\u{001b}','\u{001c}','\u{001d}','\u{001e}','\u{001f}',
-
-    ' ', '!', '"', '#', '$', '%', '&', '\u{0027}', '(', ')', '*', '+', ',', '-', '.', '/',
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?',
-
-    '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G',  'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
-    'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',  'X', 'Y', 'Z', '[', '\u{005c}', ']', '^', '_',
-
-    '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
-    'p', 'q', 'r', 's', 't', 'u', 'v', 'w',  'x', 'y', 'z', '{', '|', '}', '~', ' ',
-
-    '\u{2660}','\u{2665}','\u{2663}','\u{2666}','\u{25CB}','\u{25CF}','を','ぁ',
-     'ぃ','ぅ','ぇ','ぉ','ゃ','ゅ','ょ','っ',
-    '　','あ','い','う','え','お','か','き', 'く','け','こ','さ','し','す','せ','そ',
-    '　','。','「','」','、','・','ヲ','ァ', 'ィ','ゥ','ェ','ォ','ャ','ュ','ョ','ッ',
-    'ー','ア','イ','ウ','エ','オ','カ','キ','ク','ケ','コ','サ','シ','ス','セ','ソ',
-    'タ','チ','ツ','テ','ト','ナ','ニ','ヌ','ネ','ノ','ハ','ヒ','フ','ヘ','ホ','マ',
-    'ミ','ム','メ','モ','ヤ','ユ','ヨ','ラ', 'リ','ル','レ','ロ','ワ','ン','゛','゜',
-    'た','ち','つ','て','と','な','に','ぬ', 'ね','の','は','ひ','ふ','へ','ほ','ま',
-    'み','む','め','も','や','ゆ','よ','ら', 'り','る','れ','ろ','わ','ん','　','　',
-];
-
-fn msx_ascii_to_string(uv: Vec<u8>) -> String
-{
-    let mut cv:String = "".to_string();
-    for u in uv {
-        let s = u as usize;
-        let c =  MSX_UTF8[s];
-        cv.push(c);
-    }
-    cv
-}
-
-#[test]
-fn msx_asci_test()
-{
-    let uv: Vec<u8> = [0x41,0x51,0x61,0x71,0x80,0x81,0x82,0x83,0x84,0x85].to_vec();
-    let s = msx_ascii_to_string(uv);
-    println!("{}", s);
-    assert!(s == "AQaq♠♥♣♦○●");
-}
 
 fn dump_hex(uv: Vec<u8>) -> String
 {
@@ -110,18 +63,9 @@ fn hex2u8(hex: &str) -> Vec<u8> {
     hex_vec
 }
 
-
-fn ascii_check() {
-    let s = "Hello, こんにちは！";
-    for c in s.chars() {
-        if c.is_ascii() {
-            println!("{} is ASCII", c);
-        } else {
-            println!("{} is multibyte", c);
-        }
-    }
-}
-
+//
+// 指定されたファイルをロードしてvec<String>を返す
+//
 fn load(command_line: &str) -> Result<Vec<String>> {
     let tokens: Vec<&str> = command_line.split(" ").collect();
     let token = tokens[1];
@@ -134,7 +78,9 @@ fn load(command_line: &str) -> Result<Vec<String>> {
     Ok(lines)
 }
 
-
+//
+// コマンドラインオプションの設定
+//
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -178,7 +124,7 @@ fn main() -> Result<()> {
             stream = s;
             println!("connected.");
         },
-        Err(e) => {
+        Err(_) => {
             eprintln!("Failed to connect.");
             return Ok(());
         }, 
@@ -198,7 +144,7 @@ fn main() -> Result<()> {
                 let recv_buff = dump_hex(byte_buff);
                 printer.print(recv_buff).expect("External print failure");
             } else {
-                let recv_buff = msx_ascii_to_string(byte_buff).trim().to_string();
+                let recv_buff = msxcode::msx_ascii_to_string(byte_buff).trim().to_string();
                 printer.print(recv_buff).expect("External print failure");    
             }
         }
@@ -253,8 +199,9 @@ fn main() -> Result<()> {
 
                     let mut tmp2 = line.to_string();
                     tmp2.push(C_CR);
-                    stream
-                        .write(tmp2.as_bytes())
+                    let faces_code = msxcode::str_to_faces_code(tmp2.as_str());
+                    let send_size = stream
+                        .write(&faces_code)
                         .expect("Failed to write to server");
                 }
             }
