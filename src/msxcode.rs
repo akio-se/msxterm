@@ -103,7 +103,7 @@ pub fn str_to_faces_code(input: &str) -> Vec<u8> {
         ('な', [0x55].to_vec()),
         ('に', [0x49].to_vec()),
         ('ぬ', [0x31].to_vec()), 
-        ('れ', [0x3b].to_vec()), // 「ね」に似ている「れ」
+        ('ね', [0x3b].to_vec()), // 「ね」に似ている「れ」
         ('の', [0x4b].to_vec()),
 
         ('は', [0x46].to_vec()),
@@ -234,5 +234,5 @@ fn test_str_to_faces_code()
     let v=str_to_faces_code("Helloこんにちは・ぇねを・。!%?`{|}~");
     let s = dump_hex(v);
     println!("{}",s);
-    assert!(s == "48 65 6C 6C 6F F3 42 59 49 41 46 20 35 36 20 3E F3 20 20 20 20 20 20 20 20 ");
+    assert!(s == "48 65 6C 6C 6F F3 42 59 49 41 46 20 35 3B 36 20 3E F3 20 20 20 20 20 20 20 20 ");
 }
