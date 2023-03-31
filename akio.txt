@@ -1,41 +1,4 @@
 #V2
-#load ./src/test.bas
-100 print "Start Program"
-110 for i=0 to 10
-120 print i
-130 next i
-run
-110 for i=0 to 10
-00
-#quit
-cls
-new
-#load ./src/test.bas
-100 print "Start Program"
-110 for i=0 to 10
-120 print i
-130 next i
-run
-110 for i=0 to 1000
-run
-list
-120 print i
-120 print i*2
-list
-run
-#quit
-files
-load "HELLO20"
-run
-cls
-list
-print "Hello World"
-print "Hello World!!"
-print "Hello World@@"
-print "Hello World%%"
-100 print "Start Program"
-list
-20
 list
 run
 100 print "Start Program"
@@ -55,4 +18,84 @@ new
 130 next i
 list
 run
+#quit
+#load ./src/test.bas
+100 print "Start Program"
+110 for i=0 to 10
+120 print i
+130 next i
+list
+run
+110 for i=0 to 1000
+run
+cls
+list
+#hex f3
+byiafpte
+#hex f3
+files
+load "SPRITE"
+run
+list
+125 print x,y
+run
+#hex e1
+#hex 60
+#hex 21
+#hex 25
+#hex 3f
+#hex 50
+#hex 60
+#hex c0 db dd de
+quit
+#quit
+print 10+20
+print "こんにちはせかい"
+print "こん#E$%&"
+print "こんにちは世界"
+print "こんにちは世界おいしいよ"
+print "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへこまみむめもやゆよらりるれろわをん"
+cls
+print "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへこまみむめもやゆよらりるれろわをん"
+print "なにぬねの"
+print "はひふへほ"
+print "jn]/m
+"
+print "まみむめも"
+やゆよ
+そりと
+cls
+そりと
+789
+やゆよ
+わをん
+ぁぃぅぇぉ
+がぎぐけご
+げ
+ぱぴぷぺぽ
+やったね
+list
+0
+!
+"
+%
+{}
+[]
+@
+#quit
+print "まみむめも"
+#quit
+ばびぶべぼ
+がぎぐげご
+ざじずぜぞ
+だぢづでど
+ばびぶべぼ
+ぱぴぷぺぽ
+っっ。、
+・
+・・・
+・・・ち
+゛
+゜
+ー
 #quit
