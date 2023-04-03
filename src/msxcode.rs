@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 const U_KANA:u8 = 0xF3;
+const U_CAPS:u8 = 0xF2;
 
 //
 // MSX ASCII から UTF-8 への変換テーブル
@@ -33,7 +34,7 @@ const MSX_TO_UTF8: [char; 256] = [
     'タ','チ','ツ','テ','ト','ナ','ニ','ヌ','ネ','ノ','ハ','ヒ','フ','ヘ','ホ','マ',
     'ミ','ム','メ','モ','ヤ','ユ','ヨ','ラ', 'リ','ル','レ','ロ','ワ','ン','゛','゜',
     'た','ち','つ','て','と','な','に','ぬ', 'ね','の','は','ひ','ふ','へ','ほ','ま',
-    'み','む','め','も','や','ゆ','よ','ら', 'り','る','れ','ろ','わ','ん','　','　',
+    'み','む','め','も','や','ゆ','よ','ら', 'り','る','れ','ろ','わ','ん','　','■',
 ];
 
 
@@ -52,10 +53,16 @@ pub fn msx_ascii_to_string(uv: Vec<u8>) -> String
 #[test]
 fn msx_asci_test()
 {
-    let uv: Vec<u8> = [0x41,0x51,0x61,0x71,0x80,0x81,0x82,0x83,0x84,0x85].to_vec();
+    let uv: Vec<u8> = vec![0x41,0x51,0x61,0x71,0x80,0x81,0x82,0x83,0x84,0x85];
     let s = msx_ascii_to_string(uv);
     println!("{}", s);
     assert!(s == "AQaq♠♥♣♦○●");
+}
+
+enum FacesCode {
+    Ascii(u8),
+    Hiragana(Vec<u8>),
+    Katakana(Vec<u8>),
 }
 
 
@@ -63,157 +70,301 @@ fn msx_asci_test()
 // UTF-8 ひらがな から FacesKeyCode への変換
 //
 pub fn str_to_faces_code(input: &str) -> Vec<u8> {
-    let mut result = Vec::new();
-    let hash_map: HashMap<char, Vec<u8>> = [
-        ('ぁ', [0x23].to_vec()),
-        ('ぃ', [0x45].to_vec()),
-        ('ぅ', [0x24].to_vec()),
-        ('ぇ', [0x35].to_vec()), // 大きい「え」で代用
-        ('ぉ', [0x26].to_vec()),
-   
-        ('ゃ', [0x27].to_vec()),
-        ('ゅ', [0x28].to_vec()),
-        ('ょ', [0x29].to_vec()),
-        ('っ', [0x5a].to_vec()),
+
+    // 変換用ハッシュテーブル
+    let hash_map = HashMap::from([
+        // ASCII 入力不能文字
+        ('!', FacesCode::Ascii(0x20)),
+        ('%', FacesCode::Ascii(0x20)),
+        ('?', FacesCode::Ascii(0x20)),
+        ('`', FacesCode::Ascii(0x20)),
+        ('{', FacesCode::Ascii(0x20)),
+        ('|', FacesCode::Ascii(0x20)),
+        ('}', FacesCode::Ascii(0x20)),
+        ('~', FacesCode::Ascii(0x20)),
+
+        // ASCII コード変換文字
+        ('@', FacesCode::Ascii(0xC0)),
+        ('[', FacesCode::Ascii(0xDB)),
+        (']', FacesCode::Ascii(0xDD)),
+        ('^', FacesCode::Ascii(0xDE)),
+
+        // ひらがな
+        ('ぁ', FacesCode::Hiragana(vec![0x23])),
+        ('ぃ', FacesCode::Hiragana(vec![0x45])),
+        ('ぅ', FacesCode::Hiragana(vec![0x24])),
+        ('ぇ', FacesCode::Hiragana(vec![0x35])), // 大きい「え」で代用
+        ('ぉ', FacesCode::Hiragana(vec![0x26])),
+        ('ゃ', FacesCode::Hiragana(vec![0x27])),
+        ('ゅ', FacesCode::Hiragana(vec![0x28])),
+        ('ょ', FacesCode::Hiragana(vec![0x29])),
+        ('っ', FacesCode::Hiragana(vec![0x5a])),
   
-        ('あ', [0x33].to_vec()),
-        ('い', [0x65].to_vec()),
-        ('う', [0x34].to_vec()),
-        ('え', [0x35].to_vec()),
-        ('お', [0x36].to_vec()),
+        ('あ', FacesCode::Hiragana(vec![0x33])),
+        ('い', FacesCode::Hiragana(vec![0x65])),
+        ('う', FacesCode::Hiragana(vec![0x34])),
+        ('え', FacesCode::Hiragana(vec![0x35])),
+        ('お', FacesCode::Hiragana(vec![0x36])),
 
-        ('か', [0x54].to_vec()),
-        ('き', [0x47].to_vec()),
-        ('く', [0x48].to_vec()),
-        ('け', [0x2a].to_vec()),
-        ('こ', [0x42].to_vec()),
+        ('か', FacesCode::Hiragana(vec![0x54])),
+        ('き', FacesCode::Hiragana(vec![0x47])),
+        ('く', FacesCode::Hiragana(vec![0x48])),
+        ('け', FacesCode::Hiragana(vec![0x2a])),
+        ('こ', FacesCode::Hiragana(vec![0x42])),
         
-        ('さ', [0x58].to_vec()),
-        ('し', [0x44].to_vec()),
-        ('す', [0x52].to_vec()),
-        ('せ', [0x50].to_vec()),
-        ('そ', [0x43].to_vec()),
+        ('さ', FacesCode::Hiragana(vec![0x58])),
+        ('し', FacesCode::Hiragana(vec![0x44])),
+        ('す', FacesCode::Hiragana(vec![0x52])),
+        ('せ', FacesCode::Hiragana(vec![0x50])),
+        ('そ', FacesCode::Hiragana(vec![0x43])),
 
-        ('た', [0x51].to_vec()),
-        ('ち', [0x41].to_vec()),
-        ('つ', [0x7A].to_vec()),
-        ('て', [0x57].to_vec()),
-        ('と', [0x53].to_vec()),
+        ('た', FacesCode::Hiragana(vec![0x51])),
+        ('ち', FacesCode::Hiragana(vec![0x41])),
+        ('つ', FacesCode::Hiragana(vec![0x7A])),
+        ('て', FacesCode::Hiragana(vec![0x57])),
+        ('と', FacesCode::Hiragana(vec![0x53])),
 
-        ('な', [0x55].to_vec()),
-        ('に', [0x49].to_vec()),
-        ('ぬ', [0x31].to_vec()), 
-        ('ね', [0x3b].to_vec()), // 「ね」に似ている「れ」
-        ('の', [0x4b].to_vec()),
+        ('な', FacesCode::Hiragana(vec![0x55])),
+        ('に', FacesCode::Hiragana(vec![0x49])),
+        ('ぬ', FacesCode::Hiragana(vec![0x31])), 
+        ('ね', FacesCode::Hiragana(vec![0x3b])), // 「ね」に似ている「れ」
+        ('の', FacesCode::Hiragana(vec![0x4b])),
 
-        ('は', [0x46].to_vec()),
-        ('ひ', [0x56].to_vec()),
-        ('ふ', [0x32].to_vec()),
-        ('へ', [0xDE].to_vec()),
-        ('ほ', [0x2D].to_vec()),
+        ('は', FacesCode::Hiragana(vec![0x46])),
+        ('ひ', FacesCode::Hiragana(vec![0x56])),
+        ('ふ', FacesCode::Hiragana(vec![0x32])),
+        ('へ', FacesCode::Hiragana(vec![0xDE])),
+        ('ほ', FacesCode::Hiragana(vec![0x2D])),
 
-        ('ま', [0x4a].to_vec()),
-        ('み', [0x4e].to_vec()),
-        ('む', [0xdd].to_vec()),
-        ('め', [0x2f].to_vec()),
-        ('も', [0x4d].to_vec()),
+        ('ま', FacesCode::Hiragana(vec![0x4a])),
+        ('み', FacesCode::Hiragana(vec![0x4e])),
+        ('む', FacesCode::Hiragana(vec![0xdd])),
+        ('め', FacesCode::Hiragana(vec![0x2f])),
+        ('も', FacesCode::Hiragana(vec![0x4d])),
 
-        ('や', [0x37].to_vec()),
-        ('ゆ', [0x38].to_vec()),
-        ('よ', [0x39].to_vec()),
+        ('や', FacesCode::Hiragana(vec![0x37])),
+        ('ゆ', FacesCode::Hiragana(vec![0x38])),
+        ('よ', FacesCode::Hiragana(vec![0x39])),
 
-        ('ら', [0x4f].to_vec()),
-        ('り', [0x4c].to_vec()),
-        ('る', [0x2e].to_vec()),
-        ('れ', [0x2b].to_vec()),
-        ('ろ', [0x5f].to_vec()),
+        ('ら', FacesCode::Hiragana(vec![0x4f])),
+        ('り', FacesCode::Hiragana(vec![0x4c])),
+        ('る', FacesCode::Hiragana(vec![0x2e])),
+        ('れ', FacesCode::Hiragana(vec![0x2b])),
+        ('ろ', FacesCode::Hiragana(vec![0x5f])),
 
-        ('わ', [0x30].to_vec()), 
-        ('を', [0x36].to_vec()), // とりあえず「お」に変換
-        ('ん', [0x59].to_vec()),
-        ('　', [0x20].to_vec()),
-        ('・', [0x20].to_vec()),
-        ('゛', [0xc0].to_vec()),
-        ('゜', [0xdb].to_vec()),
-        ('ー', [0x5c].to_vec()),
-        ('、', [0x3c].to_vec()),
-        ('。', [0x3e].to_vec()),
+        ('わ', FacesCode::Hiragana(vec![0x30])), 
+        ('を', FacesCode::Hiragana(vec![0x36])), // とりあえず「お」に変換
+        ('ん', FacesCode::Hiragana(vec![0x59])),
+        ('　', FacesCode::Hiragana(vec![0x20])),
+        ('・', FacesCode::Hiragana(vec![0x20])),
+        ('゛', FacesCode::Hiragana(vec![0xc0])),
+        ('゜', FacesCode::Hiragana(vec![0xdb])),
+        ('ー', FacesCode::Hiragana(vec![0x5c])),
+        ('、', FacesCode::Hiragana(vec![0x3c])),
+        ('。', FacesCode::Hiragana(vec![0x3e])),
 
-        ('が', [0x54,0xc0].to_vec()),
-        ('ぎ', [0x47,0xc0].to_vec()),
-        ('ぐ', [0x48,0xc0].to_vec()),
-        ('げ', [0x2a,0xc0].to_vec()),
-        ('ご', [0x42,0xc0].to_vec()),
+        ('が', FacesCode::Hiragana(vec![0x54,0xc0])),
+        ('ぎ', FacesCode::Hiragana(vec![0x47,0xc0])),
+        ('ぐ', FacesCode::Hiragana(vec![0x48,0xc0])),
+        ('げ', FacesCode::Hiragana(vec![0x2a,0xc0])),
+        ('ご', FacesCode::Hiragana(vec![0x42,0xc0])),
 
-        ('ざ', [0x58,0xc0].to_vec()),
-        ('じ', [0x44,0xc0].to_vec()),
-        ('ず', [0x52,0xc0].to_vec()),
-        ('ぜ', [0x50,0xc0].to_vec()),
-        ('ぞ', [0x43,0xc0].to_vec()),
+        ('ざ', FacesCode::Hiragana(vec![0x58,0xc0])),
+        ('じ', FacesCode::Hiragana(vec![0x44,0xc0])),
+        ('ず', FacesCode::Hiragana(vec![0x52,0xc0])),
+        ('ぜ', FacesCode::Hiragana(vec![0x50,0xc0])),
+        ('ぞ', FacesCode::Hiragana(vec![0x43,0xc0])),
 
-        ('だ', [0x51,0xc0].to_vec()),
-        ('ぢ', [0x41,0xc0].to_vec()),
-        ('づ', [0x7A,0xc0].to_vec()),
-        ('で', [0x57,0xc0].to_vec()),
-        ('ど', [0x53,0xc0].to_vec()),
+        ('だ', FacesCode::Hiragana(vec![0x51,0xc0])),
+        ('ぢ', FacesCode::Hiragana(vec![0x41,0xc0])),
+        ('づ', FacesCode::Hiragana(vec![0x7A,0xc0])),
+        ('で', FacesCode::Hiragana(vec![0x57,0xc0])),
+        ('ど', FacesCode::Hiragana(vec![0x53,0xc0])),
 
-        ('ば', [0x46,0xc0].to_vec()),
-        ('び', [0x56,0xc0].to_vec()),
-        ('ぶ', [0x32,0xc0].to_vec()),
-        ('べ', [0xDE,0xc0].to_vec()),
-        ('ぼ', [0x2D,0xc0].to_vec()),
+        ('ば', FacesCode::Hiragana(vec![0x46,0xc0])),
+        ('び', FacesCode::Hiragana(vec![0x56,0xc0])),
+        ('ぶ', FacesCode::Hiragana(vec![0x32,0xc0])),
+        ('べ', FacesCode::Hiragana(vec![0xDE,0xc0])),
+        ('ぼ', FacesCode::Hiragana(vec![0x2D,0xc0])),
 
-        ('ぱ', [0x46,0xdb].to_vec()),
-        ('ぴ', [0x56,0xdb].to_vec()),
-        ('ぷ', [0x32,0xdb].to_vec()),
-        ('ぺ', [0xDE,0xdb].to_vec()),
-        ('ぽ', [0x2D,0xdb].to_vec()),
+        ('ぱ', FacesCode::Hiragana(vec![0x46,0xdb])),
+        ('ぴ', FacesCode::Hiragana(vec![0x56,0xdb])),
+        ('ぷ', FacesCode::Hiragana(vec![0x32,0xdb])),
+        ('ぺ', FacesCode::Hiragana(vec![0xDE,0xdb])),
+        ('ぽ', FacesCode::Hiragana(vec![0x2D,0xdb])),
 
-    ].iter().cloned().collect();
+        // カタカナ
+        ('ァ', FacesCode::Katakana(vec![0x23])),
+        ('ィ', FacesCode::Katakana(vec![0x45])),
+        ('ゥ', FacesCode::Katakana(vec![0x24])),
+        ('ェ', FacesCode::Katakana(vec![0x35])), // 大きい「エ」で代用
+        ('ォ', FacesCode::Katakana(vec![0x26])),
+   
+        ('ャ', FacesCode::Katakana(vec![0x27])),
+        ('ュ', FacesCode::Katakana(vec![0x28])),
+        ('ョ', FacesCode::Katakana(vec![0x29])),
+        ('ッ', FacesCode::Katakana(vec![0x5a])),
+  
+        ('ア', FacesCode::Katakana(vec![0x33])),
+        ('イ', FacesCode::Katakana(vec![0x65])),
+        ('ウ', FacesCode::Katakana(vec![0x34])),
+        ('エ', FacesCode::Katakana(vec![0x35])),
+        ('オ', FacesCode::Katakana(vec![0x36])),
 
+        ('カ', FacesCode::Katakana(vec![0x54])),
+        ('キ', FacesCode::Katakana(vec![0x47])),
+        ('ク', FacesCode::Katakana(vec![0x48])),
+        ('ケ', FacesCode::Katakana(vec![0x2a])),
+        ('コ', FacesCode::Katakana(vec![0x42])),
+        
+        ('サ', FacesCode::Katakana(vec![0x58])),
+        ('シ', FacesCode::Katakana(vec![0x44])),
+        ('ス', FacesCode::Katakana(vec![0x52])),
+        ('セ', FacesCode::Katakana(vec![0x50])),
+        ('ソ', FacesCode::Katakana(vec![0x43])),
+
+        ('タ', FacesCode::Katakana(vec![0x51])),
+        ('チ', FacesCode::Katakana(vec![0x41])),
+        ('ツ', FacesCode::Katakana(vec![0x7A])),
+        ('テ', FacesCode::Katakana(vec![0x57])),
+        ('ト', FacesCode::Katakana(vec![0x53])),
+
+        ('ナ', FacesCode::Katakana(vec![0x55])),
+        ('ニ', FacesCode::Katakana(vec![0x49])),
+        ('ヌ', FacesCode::Katakana(vec![0x31])), 
+        ('ネ', FacesCode::Katakana(vec![0x3b])), // 「ネ」に似ている「ヌ」
+        ('ノ', FacesCode::Katakana(vec![0x4b])),
+
+        ('ハ', FacesCode::Katakana(vec![0x46])),
+        ('ヒ', FacesCode::Katakana(vec![0x56])),
+        ('フ', FacesCode::Katakana(vec![0x32])),
+        ('ヘ', FacesCode::Katakana(vec![0xDE])),
+        ('ホ', FacesCode::Katakana(vec![0x2D])),
+
+        ('マ', FacesCode::Katakana(vec![0x4a])),
+        ('ミ', FacesCode::Katakana(vec![0x4e])),
+        ('ム', FacesCode::Katakana(vec![0xdd])),
+        ('メ', FacesCode::Katakana(vec![0x2f])),
+        ('モ', FacesCode::Katakana(vec![0x4d])),
+
+        ('ヤ', FacesCode::Katakana(vec![0x37])),
+        ('ユ', FacesCode::Katakana(vec![0x38])),
+        ('ヨ', FacesCode::Katakana(vec![0x39])),
+
+        ('ラ', FacesCode::Katakana(vec![0x4f])),
+        ('リ', FacesCode::Katakana(vec![0x4c])),
+        ('ル', FacesCode::Katakana(vec![0x2e])),
+        ('レ', FacesCode::Katakana(vec![0x2b])),
+        ('ロ', FacesCode::Katakana(vec![0x5f])),
+
+        ('ワ', FacesCode::Katakana(vec![0x30])), 
+        ('ヲ', FacesCode::Katakana(vec![0x36])), // とりあえず「オ」に変換
+        ('ン', FacesCode::Katakana(vec![0x59])),
+
+        ('ガ', FacesCode::Katakana(vec![0x54,0xc0])),
+        ('ギ', FacesCode::Katakana(vec![0x47,0xc0])),
+        ('グ', FacesCode::Katakana(vec![0x48,0xc0])),
+        ('ゲ', FacesCode::Katakana(vec![0x2a,0xc0])),
+        ('ゴ', FacesCode::Katakana(vec![0x42,0xc0])),
+
+        ('ザ', FacesCode::Katakana(vec![0x58,0xc0])),
+        ('ジ', FacesCode::Katakana(vec![0x44,0xc0])),
+        ('ズ', FacesCode::Katakana(vec![0x52,0xc0])),
+        ('ゼ', FacesCode::Katakana(vec![0x50,0xc0])),
+        ('ゾ', FacesCode::Katakana(vec![0x43,0xc0])),
+
+        ('ダ', FacesCode::Katakana(vec![0x51,0xc0])),
+        ('ヂ', FacesCode::Katakana(vec![0x41,0xc0])),
+        ('ヅ', FacesCode::Katakana(vec![0x7A,0xc0])),
+        ('デ', FacesCode::Katakana(vec![0x57,0xc0])),
+        ('ド', FacesCode::Katakana(vec![0x53,0xc0])),
+
+        ('バ', FacesCode::Katakana(vec![0x46,0xc0])),
+        ('ビ', FacesCode::Katakana(vec![0x56,0xc0])),
+        ('ブ', FacesCode::Katakana(vec![0x32,0xc0])),
+        ('ベ', FacesCode::Katakana(vec![0xDE,0xc0])),
+        ('ボ', FacesCode::Katakana(vec![0x2D,0xc0])),
+
+        ('パ', FacesCode::Katakana(vec![0x46,0xdb])),
+        ('ピ', FacesCode::Katakana(vec![0x56,0xdb])),
+        ('プ', FacesCode::Katakana(vec![0x32,0xdb])),
+        ('ペ', FacesCode::Katakana(vec![0xDE,0xdb])),
+        ('ポ', FacesCode::Katakana(vec![0x2D,0xdb]))
+    ]);
+
+    let mut result = Vec::new();
+    let mut caps_on = false;
+    let mut kana_on = false;
     for c in input.chars() {
         if c.is_ascii() {
-            let u = match c {
-                // 入力不能文字
-                '!' => 0x20,
-                '%' => 0x20,
-                '?' => 0x20,
-                '`' => 0x20,
-                '{' => 0x20,
-                '|' => 0x20,
-                '}' => 0x20,
-                '~' => 0x20,
-                // コード変換
-                '@' => 0xC0,
-                '[' => 0xDB,
-                ']' => 0xDD,
-                '^' => 0xDE,
-                _ => c as u8
-            };
-            result.push(u);
-        } else {
-            match hash_map.get(&c) {
-                Some(value) => {
-                    match result.last() {
-                        Some(x) => {
-                            if *x == U_KANA {
-                                result.pop();
-                            } else {
-                                result.push(U_KANA);
-                            }
-                        },
-                        None => {
-                            result.push(U_KANA);
-                        }
+            if let Some(FacesCode::Ascii(code)) = hash_map.get(&c) {
+                if kana_on {
+                    result.push(U_KANA);
+                    kana_on = !kana_on;
+                }
+                if caps_on {
+                    result.push(U_CAPS);
+                    caps_on = !caps_on;
+                }
+                result.push(*code);
+            } else {
+                if kana_on {
+                    result.push(U_KANA);
+                    kana_on = !kana_on;
+                }
+                if caps_on {
+                    result.push(U_CAPS);
+                    caps_on = !caps_on;
+                }
+                result.push(c as u8);
+            }
+        } else if let Some(keycode) = hash_map.get(&c) {
+            match keycode {
+                FacesCode::Hiragana(codes) => {
+                    if !kana_on {
+                        result.push(U_KANA);
+                        kana_on = !kana_on;    
                     }
-                    for v in value {
+                    if caps_on {
+                        result.push(U_CAPS);
+                        caps_on = !caps_on;
+                    }
+                    for v in codes {
                         result.push(*v);
                     }
-                    result.push(U_KANA);
+                 },
+                FacesCode::Katakana(codes) => {
+                    if !kana_on {
+                        result.push(U_KANA);
+                        kana_on = !kana_on;    
+                    }
+                    if !caps_on {
+                        result.push(U_CAPS);
+                        caps_on = !caps_on;
+                    }
+                    for v in codes {
+                        result.push(*v);
+                    }
                 },
-                None => ()
+                FacesCode::Ascii(code) => {
+                    if kana_on {
+                        result.push(U_KANA);
+                        kana_on = !kana_on;
+                    }
+                    if caps_on {
+                        result.push(U_CAPS);
+                        caps_on = !caps_on;
+                    }
+                    result.push(*code);
+                }
             }
         }
+    }
+    if kana_on {
+        result.push(U_KANA);
+    }
+    if caps_on {
+        result.push(U_CAPS);
     }
     result
 }
@@ -235,4 +386,9 @@ fn test_str_to_faces_code()
     let s = dump_hex(v);
     println!("{}",s);
     assert!(s == "48 65 6C 6C 6F F3 42 59 49 41 46 20 35 3B 36 20 3E F3 20 20 20 20 20 20 20 20 ");
+
+    let v=str_to_faces_code("ワタシはもうMSX0をてにいれました");
+    let s = dump_hex(v);
+    println!("{}",s);
+    assert!(s == "F3 F2 30 51 44 F2 46 4D 34 F3 4D 53 58 30 F3 36 57 49 65 2B 4A 44 51 F3 ");
 }

@@ -14,16 +14,18 @@ use std::net::{Shutdown, TcpStream};
 use std::thread;
 //use std::sync::Arc;
 use rustyline::{DefaultEditor, ExternalPrinter, Result, error::ReadlineError};
+
 use clap::Parser;
 use std::fs::File;
 use std::io::{BufRead, Write, BufReader};
+use std::path::PathBuf;
 
 const C_CR: char = '\u{000d}';
 
 const U_BREAK:u8 = 0x03;
 const U_BS:u8 = 0x08;
 const U_LF:u8 = 0x0a;
-
+const U_PAUSE:u8 = 0x7b;
 
 fn dump_hex(uv: Vec<u8>) -> String
 {
@@ -53,11 +55,10 @@ fn test_hex () {
 
 fn hex2u8(hex: &str) -> Vec<u8> {
     let mut hex_vec: Vec<u8> = Vec::new();
-    let tokens: Vec<&str> = hex.split(" ").collect();
+    let tokens: Vec<&str> = hex.split(' ').collect();
     for token in &tokens[1..] {
-        match u8::from_str_radix(token, 16) {
-            Ok(val) => hex_vec.push(val),
-            Err(_) => (),
+        if let Ok(val) = u8::from_str_radix(token, 16) {
+            hex_vec.push(val)   
         }
     }
     hex_vec
@@ -67,9 +68,11 @@ fn hex2u8(hex: &str) -> Vec<u8> {
 // 指定されたファイルをロードしてvec<String>を返す
 //
 fn load(command_line: &str) -> Result<Vec<String>> {
-    let tokens: Vec<&str> = command_line.split(" ").collect();
-    let token = tokens[1];
-    let file = File::open(token).unwrap();
+    let tokens: Vec<&str> = command_line.split(' ').collect();
+    let path_str = tokens[1];
+    // ファイルのパス
+    let path = PathBuf::from(path_str.trim_matches('\"'));
+    let file = File::open(path)?;
     let reader = BufReader::new(file);       
     let mut lines = Vec::new();
     for line in reader.lines() {
@@ -86,8 +89,8 @@ fn load(command_line: &str) -> Result<Vec<String>> {
 struct Args {
     host: String,
 
-    #[arg(short, long, value_name = "histort.txt")]
-    filename: String,
+    #[arg(short, long, value_name = "history file", default_value = "history.txt")]
+    file: String,
 }
 
 struct Msxterm {
@@ -104,13 +107,12 @@ fn main() -> Result<()> {
     // コマンドライン引数取得
     let args = Args::parse();
     println!("{}", args.host);
-    println!("{}", args.filename);
+    println!("{}", args.file);
  
     // エディタを生成
     let mut rl = DefaultEditor::new()?;
     let mut printer = rl.create_external_printer()?;
-
-    if rl.load_history(&args.filename).is_err() {
+    if rl.load_history(&args.file).is_err() {
         println!("No previous history.");
     }
 
@@ -157,7 +159,7 @@ fn main() -> Result<()> {
         match readline {
             Ok(tmpl) => {
                 //let mut line_tmp: &str = line.as_str();
-                let b = tmpl.as_str().replace("\r\n","\r").replace("\n","\r");
+                let b = tmpl.as_str().replace("\r\n","\r").replace('\n',"\r");
                 let lines: Vec<&str> = b.split(C_CR).collect();
                 for line in lines {
                     rl.add_history_entry(line)?;
@@ -169,7 +171,7 @@ fn main() -> Result<()> {
                     }
                     if line.starts_with("#hex") {
                         let hex = hex2u8(line);
-                        stream.write(&hex)?;
+                        stream.write_all(&hex)?;
                         continue;
                     }
                     if line.starts_with("#dump_on") {
@@ -185,14 +187,20 @@ fn main() -> Result<()> {
                         continue;
                     }
                     if line.starts_with("#load") {
-                        let basic = load(line).unwrap();
-                        for bl in basic {
-                            let mut tmp = bl.trim().to_string();
-                            rl.add_history_entry(tmp.as_str())?;
-                            tmp.push(C_CR);
-                            stream
-                            .write(tmp.as_bytes())
-                            .expect("Failed to write to server");
+                        match load(line) {
+                            Ok(basic) => {
+                                for bl in basic {
+                                    let mut tmp = bl.trim().to_string();
+                                    rl.add_history_entry(tmp.as_str())?;
+                                    tmp.push(C_CR);
+                                    stream
+                                    .write_all(tmp.as_bytes())
+                                    .expect("Failed to write to server");
+                                }
+                            },
+                            Err(e) => {
+                                println!("{}", e);
+                            }
                         }
                         continue;
                     }
@@ -200,21 +208,21 @@ fn main() -> Result<()> {
                     let mut tmp2 = line.to_string();
                     tmp2.push(C_CR);
                     let faces_code = msxcode::str_to_faces_code(tmp2.as_str());
-                    let send_size = stream
-                        .write(&faces_code)
+                    stream
+                        .write_all(&faces_code)
                         .expect("Failed to write to server");
                 }
             }
             Err(ReadlineError::Interrupted) => {
                 // break 送信
                 let buf = vec![U_BREAK];
-                stream.write(&buf)?;
+                stream.write_all(&buf)?;
                 continue;
             }
             Err(ReadlineError::Eof) => {
                 // BS 送信
-                let buf = vec![U_BS];
-                stream.write(&buf)?;
+                let buf = vec![U_PAUSE];
+                stream.write_all(&buf)?;
                 continue;
             }
             Err(err) => {
@@ -229,6 +237,6 @@ fn main() -> Result<()> {
         .expect("Failed to join receive thread");
 
     // 履歴ファイル記録
-    rl.save_history(& args.filename).unwrap();
+    rl.save_history(& args.file).unwrap();
     Ok(())
 }
