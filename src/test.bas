@@ -1,4 +1,9 @@
-100 print "Start Program"
-110 for i=0 to 10
-120 print i
-130 next i
+10 DEFINT A-Z
+20 SCREEN 8
+30 COLOR 255,0,0
+40 FOR Y=0 TO 7
+50 FOR X=0 TO 31
+60 LINE(X*8,Y*27)-STEP(7,26),Y*32+X,BF
+70 NEXT
+80 NEXT
+90 GOTO 90
