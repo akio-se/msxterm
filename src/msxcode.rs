@@ -4,6 +4,7 @@
 // https://github.com/akio-se/msxterm
 //
 use std::collections::HashMap;
+use encoding_rs::{SHIFT_JIS};
 
 const U_KANA:u8 = 0xF3;
 const U_CAPS:u8 = 0xF2;
@@ -47,7 +48,7 @@ const MSX_TO_GRAPH: [char;256] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?',
 
     '\u{3000}', '月', '火','水','木','金','土','日','年','円','時','分','秒','百','千','万',
-    'π',  '┻', '┳', '┫', '┣', '╋','┃', '━', '┏','┓', '┗', '┛','\u{2715}', '大','中','小',
+    'π',  '┻', '┳', '┫', '┣', '╋','┃', '━', '┏','┓', '┗', '┛','\u{2573}', '大','中','小',
 
     '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
     'p', 'q', 'r', 's', 't', 'u', 'v', 'w',  'x', 'y', 'z', '{', '|', '}', '~', ' ',
@@ -72,15 +73,13 @@ pub fn msx_ascii_to_string(uv: Vec<u8>) -> String
         let s = u as usize;
         if u == 1 {
             graph = true;
+        } else if graph {
+            let c = MSX_TO_GRAPH[s];
+            cv.push(c);
+            graph = false;
         } else {
-            if graph {
-                let c = MSX_TO_GRAPH[s];
-                cv.push(c);
-                graph = false;
-            } else {
-                let c =  MSX_TO_UTF8[s];
-                cv.push(c);
-            }
+            let c =  MSX_TO_UTF8[s];
+            cv.push(c);
         }
     }
     cv
@@ -95,12 +94,40 @@ fn msx_asci_test()
     assert!(s == "AQaq♠♥♣♦○●");
 }
 
+// MSX KANJIから UTF-8 文字列へ変換
+pub fn msx_kanji_to_string(uv: Vec<u8>) -> String
+{
+    let (res,_,_) = SHIFT_JIS.decode(&uv);
+    res.into_owned()
+}
+
+pub fn utf8_to_msx_kanji(input: &str) -> Vec<u8>
+{
+    let (res,_,_) = SHIFT_JIS.encode(input);
+    res.into_owned()
+}
+
+
+#[test]
+fn msx_kanji_test()
+{
+    let uv: Vec<u8> = vec![0x82,0x6c,0x82,0x72,0x82,0x77,0x82,0xcc,0x8a,0xbf,0x8e,0x9a];
+    let s = msx_kanji_to_string(uv);
+    println!("{}", s);
+    assert_eq!(s,"ＭＳＸの漢字");
+}
+
+
 enum FacesCode {
     Ascii(u8),
     Hiragana(Vec<u8>),
     Katakana(Vec<u8>),
 }
 
+enum MsxCode {
+    Ascii(u8),
+    Kana(Vec<u8>),
+}
 
 //
 // UTF-8 ひらがな から FacesKeyCode への変換
@@ -110,6 +137,7 @@ pub fn str_to_faces_code(input: &str) -> Vec<u8> {
     // 変換用ハッシュテーブル
     let hash_map = HashMap::from([
         // ASCII 入力不能文字
+
         ('!', FacesCode::Ascii(0x20)),
         ('%', FacesCode::Ascii(0x20)),
         ('?', FacesCode::Ascii(0x20)),
@@ -427,4 +455,265 @@ fn test_str_to_faces_code()
     let s = dump_hex(v);
     println!("{}",s);
     assert!(s == "F3 F2 30 51 44 F2 46 4D 34 F3 4D 53 58 30 F3 36 57 49 65 2B 4A 44 51 F3 ");
+}
+
+//
+// UTF8 から MSX_JP_CODE への変換
+//
+pub fn utf8_msx_jp_code(input: &str) -> Vec<u8> {
+
+    // 変換用ハッシュテーブル
+    let hash_map = HashMap::from([
+        // ASCII コード変換文字
+        ('\u{2660}', MsxCode::Ascii(0x80)), // スペード
+        ('\u{2665}', MsxCode::Ascii(0x81)), // ハート
+        ('\u{2663}', MsxCode::Ascii(0x82)), // クローバー
+        ('\u{2666}', MsxCode::Ascii(0x83)), // ダイヤ
+        ('\u{25CB}', MsxCode::Ascii(0x84)), // 中空丸 ◯
+        ('\u{25CF}', MsxCode::Ascii(0x85)), // 塗潰丸 ●
+
+        // ひらがな
+        ('を', MsxCode::Kana(vec![0x86])),
+        ('ぁ', MsxCode::Kana(vec![0x87])),
+        ('ぃ', MsxCode::Kana(vec![0x88])),
+        ('ぅ', MsxCode::Kana(vec![0x89])),
+        ('ぇ', MsxCode::Kana(vec![0x8a])),
+        ('ぉ', MsxCode::Kana(vec![0x8b])),
+        ('ゃ', MsxCode::Kana(vec![0x8c])),
+        ('ゅ', MsxCode::Kana(vec![0x8d])),
+        ('ょ', MsxCode::Kana(vec![0x8e])),
+        ('っ', MsxCode::Kana(vec![0x8f])),
+  
+        ('あ', MsxCode::Kana(vec![0x91])),
+        ('い', MsxCode::Kana(vec![0x92])),
+        ('う', MsxCode::Kana(vec![0x93])),
+        ('え', MsxCode::Kana(vec![0x94])),
+        ('お', MsxCode::Kana(vec![0x95])),
+
+        ('か', MsxCode::Kana(vec![0x96])),
+        ('き', MsxCode::Kana(vec![0x97])),
+        ('く', MsxCode::Kana(vec![0x98])),
+        ('け', MsxCode::Kana(vec![0x99])),
+        ('こ', MsxCode::Kana(vec![0x9a])),
+        
+        ('さ', MsxCode::Kana(vec![0x9b])),
+        ('し', MsxCode::Kana(vec![0x9c])),
+        ('す', MsxCode::Kana(vec![0x9d])),
+        ('せ', MsxCode::Kana(vec![0x9e])),
+        ('そ', MsxCode::Kana(vec![0x9f])),
+
+        ('た', MsxCode::Kana(vec![0xe0])),
+        ('ち', MsxCode::Kana(vec![0xe1])),
+        ('つ', MsxCode::Kana(vec![0xe2])),
+        ('て', MsxCode::Kana(vec![0xe3])),
+        ('と', MsxCode::Kana(vec![0xe4])),
+
+        ('な', MsxCode::Kana(vec![0xe5])),
+        ('に', MsxCode::Kana(vec![0xe6])),
+        ('ぬ', MsxCode::Kana(vec![0xe7])), 
+        ('ね', MsxCode::Kana(vec![0xe8])),
+        ('の', MsxCode::Kana(vec![0xe9])),
+
+        ('は', MsxCode::Kana(vec![0xea])),
+        ('ひ', MsxCode::Kana(vec![0xeb])),
+        ('ふ', MsxCode::Kana(vec![0xec])),
+        ('へ', MsxCode::Kana(vec![0xed])),
+        ('ほ', MsxCode::Kana(vec![0xee])),
+
+        ('ま', MsxCode::Kana(vec![0xef])),
+        ('み', MsxCode::Kana(vec![0xf0])),
+        ('む', MsxCode::Kana(vec![0xf1])),
+        ('め', MsxCode::Kana(vec![0xf2])),
+        ('も', MsxCode::Kana(vec![0xf3])),
+
+        ('や', MsxCode::Kana(vec![0xf4])),
+        ('ゆ', MsxCode::Kana(vec![0xf5])),
+        ('よ', MsxCode::Kana(vec![0xf6])),
+
+        ('ら', MsxCode::Kana(vec![0xf7])),
+        ('り', MsxCode::Kana(vec![0xf8])),
+        ('る', MsxCode::Kana(vec![0xf9])),
+        ('れ', MsxCode::Kana(vec![0xfa])),
+        ('ろ', MsxCode::Kana(vec![0xfb])),
+
+        ('わ', MsxCode::Kana(vec![0xfc])), 
+        ('ん', MsxCode::Kana(vec![0xfd])),
+
+        ('　', MsxCode::Kana(vec![0x20])),
+        ('。', MsxCode::Kana(vec![0xa1])),
+        ('「', MsxCode::Kana(vec![0xa2])),
+        ('」', MsxCode::Kana(vec![0xa3])),
+        ('、', MsxCode::Kana(vec![0xa4])),
+        ('・', MsxCode::Kana(vec![0xa5])),
+
+
+        ('が', MsxCode::Kana(vec![0x96,0xde])),
+        ('ぎ', MsxCode::Kana(vec![0x97,0xde])),
+        ('ぐ', MsxCode::Kana(vec![0x98,0xde])),
+        ('げ', MsxCode::Kana(vec![0x99,0xde])),
+        ('ご', MsxCode::Kana(vec![0x9a,0xde])),
+
+        ('ざ', MsxCode::Kana(vec![0x9b,0xde])),
+        ('じ', MsxCode::Kana(vec![0x9c,0xde])),
+        ('ず', MsxCode::Kana(vec![0x9d,0xde])),
+        ('ぜ', MsxCode::Kana(vec![0x9e,0xde])),
+        ('ぞ', MsxCode::Kana(vec![0x9f,0xde])),
+
+        ('だ', MsxCode::Kana(vec![0xe0,0xde])),
+        ('ぢ', MsxCode::Kana(vec![0xe1,0xde])),
+        ('づ', MsxCode::Kana(vec![0xe2,0xde])),
+        ('で', MsxCode::Kana(vec![0xe3,0xde])),
+        ('ど', MsxCode::Kana(vec![0xe4,0xde])),
+
+        ('ば', MsxCode::Kana(vec![0xea,0xde])),
+        ('び', MsxCode::Kana(vec![0xeb,0xde])),
+        ('ぶ', MsxCode::Kana(vec![0xec,0xde])),
+        ('べ', MsxCode::Kana(vec![0xed,0xde])),
+        ('ぼ', MsxCode::Kana(vec![0xee,0xde])),
+
+        ('ぱ', MsxCode::Kana(vec![0xea,0xdf])),
+        ('ぴ', MsxCode::Kana(vec![0xeb,0xdf])),
+        ('ぷ', MsxCode::Kana(vec![0xec,0xdf])),
+        ('ぺ', MsxCode::Kana(vec![0xed,0xdf])),
+        ('ぽ', MsxCode::Kana(vec![0xee,0xdf])),
+
+        // カタカナ
+        ('ヲ', MsxCode::Kana(vec![0xa6])), 
+        ('ァ', MsxCode::Kana(vec![0xa7])),
+        ('ィ', MsxCode::Kana(vec![0xa8])),
+        ('ゥ', MsxCode::Kana(vec![0xa9])),
+        ('ェ', MsxCode::Kana(vec![0xaa])),
+        ('ォ', MsxCode::Kana(vec![0xab])),
+   
+        ('ャ', MsxCode::Kana(vec![0xac])),
+        ('ュ', MsxCode::Kana(vec![0xad])),
+        ('ョ', MsxCode::Kana(vec![0xae])),
+        ('ッ', MsxCode::Kana(vec![0xaf])),
+        ('ー', MsxCode::Kana(vec![0xb0])),
+  
+        ('ア', MsxCode::Kana(vec![0xb1])),
+        ('イ', MsxCode::Kana(vec![0xb2])),
+        ('ウ', MsxCode::Kana(vec![0xb3])),
+        ('エ', MsxCode::Kana(vec![0xb4])),
+        ('オ', MsxCode::Kana(vec![0xb5])),
+
+        ('カ', MsxCode::Kana(vec![0xb6])),
+        ('キ', MsxCode::Kana(vec![0xb7])),
+        ('ク', MsxCode::Kana(vec![0xb8])),
+        ('ケ', MsxCode::Kana(vec![0xb9])),
+        ('コ', MsxCode::Kana(vec![0xba])),
+        
+        ('サ', MsxCode::Kana(vec![0xbb])),
+        ('シ', MsxCode::Kana(vec![0xbc])),
+        ('ス', MsxCode::Kana(vec![0xbd])),
+        ('セ', MsxCode::Kana(vec![0xbe])),
+        ('ソ', MsxCode::Kana(vec![0xbf])),
+
+        ('タ', MsxCode::Kana(vec![0xc0])),
+        ('チ', MsxCode::Kana(vec![0xc1])),
+        ('ツ', MsxCode::Kana(vec![0xc2])),
+        ('テ', MsxCode::Kana(vec![0xc3])),
+        ('ト', MsxCode::Kana(vec![0xc4])),
+
+        ('ナ', MsxCode::Kana(vec![0xc5])),
+        ('ニ', MsxCode::Kana(vec![0xc6])),
+        ('ヌ', MsxCode::Kana(vec![0xc7])), 
+        ('ネ', MsxCode::Kana(vec![0xc8])),
+        ('ノ', MsxCode::Kana(vec![0xc9])),
+
+        ('ハ', MsxCode::Kana(vec![0xca])),
+        ('ヒ', MsxCode::Kana(vec![0xcb])),
+        ('フ', MsxCode::Kana(vec![0xcc])),
+        ('ヘ', MsxCode::Kana(vec![0xcd])),
+        ('ホ', MsxCode::Kana(vec![0xce])),
+
+        ('マ', MsxCode::Kana(vec![0xcf])),
+        ('ミ', MsxCode::Kana(vec![0xd0])),
+        ('ム', MsxCode::Kana(vec![0xd1])),
+        ('メ', MsxCode::Kana(vec![0xd2])),
+        ('モ', MsxCode::Kana(vec![0xd3])),
+
+        ('ヤ', MsxCode::Kana(vec![0xd4])),
+        ('ユ', MsxCode::Kana(vec![0xd5])),
+        ('ヨ', MsxCode::Kana(vec![0xd6])),
+
+        ('ラ', MsxCode::Kana(vec![0xd7])),
+        ('リ', MsxCode::Kana(vec![0xd8])),
+        ('ル', MsxCode::Kana(vec![0xd9])),
+        ('レ', MsxCode::Kana(vec![0xda])),
+        ('ロ', MsxCode::Kana(vec![0xdb])),
+
+        ('ワ', MsxCode::Kana(vec![0xdc])), 
+        ('ン', MsxCode::Kana(vec![0xdd])),
+
+        ('゛', MsxCode::Kana(vec![0xde])),
+        ('゜', MsxCode::Kana(vec![0xdf])),
+
+        ('ガ', MsxCode::Kana(vec![0xb6,0xde])),
+        ('ギ', MsxCode::Kana(vec![0xb7,0xde])),
+        ('グ', MsxCode::Kana(vec![0xb8,0xde])),
+        ('ゲ', MsxCode::Kana(vec![0xb9,0xde])),
+        ('ゴ', MsxCode::Kana(vec![0xba,0xde])),
+
+        ('ザ', MsxCode::Kana(vec![0xbb,0xde])),
+        ('ジ', MsxCode::Kana(vec![0xbc,0xde])),
+        ('ズ', MsxCode::Kana(vec![0xbd,0xde])),
+        ('ゼ', MsxCode::Kana(vec![0xbe,0xde])),
+        ('ゾ', MsxCode::Kana(vec![0xbf,0xde])),
+
+        ('ダ', MsxCode::Kana(vec![0xc0,0xde])),
+        ('ヂ', MsxCode::Kana(vec![0xc1,0xde])),
+        ('ヅ', MsxCode::Kana(vec![0xc2,0xde])),
+        ('デ', MsxCode::Kana(vec![0xc3,0xde])),
+        ('ド', MsxCode::Kana(vec![0xc4,0xde])),
+
+        ('バ', MsxCode::Kana(vec![0xca,0xde])),
+        ('ビ', MsxCode::Kana(vec![0xcb,0xde])),
+        ('ブ', MsxCode::Kana(vec![0xcc,0xde])),
+        ('ベ', MsxCode::Kana(vec![0xcd,0xde])),
+        ('ボ', MsxCode::Kana(vec![0xce,0xde])),
+
+        ('パ', MsxCode::Kana(vec![0xca,0xdf])),
+        ('ピ', MsxCode::Kana(vec![0xcb,0xdf])),
+        ('プ', MsxCode::Kana(vec![0xcc,0xdf])),
+        ('ペ', MsxCode::Kana(vec![0xcd,0xdf])),
+        ('ポ', MsxCode::Kana(vec![0xce,0xdf]))
+    ]);
+
+    let mut result = Vec::new();
+    for c in input.chars() {
+        if c.is_ascii() {
+            if let Some(MsxCode::Ascii(code)) = hash_map.get(&c) {
+                result.push(*code);
+            } else {
+                result.push(c as u8);
+            }
+        } else if let Some(keycode) = hash_map.get(&c) {
+            match keycode {
+                MsxCode::Kana(codes) => {
+                    for v in codes {
+                        result.push(*v);
+                    }
+                 },
+                MsxCode::Ascii(code) => {
+                    result.push(*code);
+                }
+            }
+        }
+    }
+    result
+}
+
+#[test]
+fn test_str_to_msx_code()
+{
+    let v=utf8_msx_jp_code("Helloこんにちは・ぇねを・。!%?`{|}~");
+    let s = dump_hex(v);
+    println!("{}",s);
+    assert!(s == "48 65 6C 6C 6F 9A FD E6 E1 EA A5 8A E8 86 A5 A1 21 25 3F 60 7B 7C 7D 7E ");
+
+    let v=utf8_msx_jp_code("ワタシはもうMSX0をてにいれました");
+    let s = dump_hex(v);
+    println!("{}",s);
+    assert!(s == "DC C0 BC EA F3 93 4D 53 58 30 86 E3 E6 92 FA EF 9C E0 ");
 }

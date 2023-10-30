@@ -9,11 +9,14 @@
 #![allow(dead_code)]
 //
 mod msxcode;
+mod connection;
 
 use std::net::{Shutdown, TcpStream};
 use std::thread;
+
+use rustyline::config::Configurer;
 //use std::sync::Arc;
-use rustyline::{DefaultEditor, ExternalPrinter, Result, error::ReadlineError};
+use rustyline::{DefaultEditor, EditMode, ExternalPrinter, Result, error::ReadlineError};
 use std::collections::{BTreeMap, HashMap};
 use clap::Parser;
 use std::fs::File;
@@ -21,6 +24,9 @@ use std::io::{BufRead, Write, BufReader,BufWriter};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
+//use serialport::{ SerialPort, SerialPortType, available_ports};
+use serial2::{SerialPort};
+//use crate::connection::{TcpConnection, SerialConnection};
 
 const C_CR: char = '\u{000d}';
 const C_LF: char = '\u{000a}';
@@ -28,6 +34,7 @@ const C_LF: char = '\u{000a}';
 const U_BREAK:u8 = 0x03;
 const U_BS:u8 = 0x08;
 const U_LF:u8 = 0x0a;
+const U_CR:u8 = 0x0d;
 const U_PAUSE:u8 = 0x7b;
 
 fn dump_hex(uv: Vec<u8>) -> String
@@ -90,15 +97,29 @@ fn load(command_line: &str) -> Result<Vec<String>> {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    host: String,
+    /// Host_IP or Serial_Port
+    target: Option<String>,
 
+    /// history file name
     #[arg(short, long, value_name = "history file", default_value = "history.txt")]
     file: String,
+
+    #[arg(short, long, value_name= "emacs or vi", default_value = "emacs")]
+    editor: Option<String>,
+
+    /// Use Serial Port
+    #[arg(short, long)]
+    serial: bool,
+
+    /// Display Serial Port List
+    #[arg(short, long)]
+    port_list: bool,
 }
 
 struct Msxterm {
     dump_mode: bool,
     lower_mode: bool,
+    kanji_mode: bool,
     prog_buff:BTreeMap<u16, String>,
     t_com: HashMap<String, String>,
 }
@@ -107,7 +128,8 @@ impl Msxterm {
     pub fn new() -> Msxterm {
         Msxterm { 
             dump_mode: false, 
-            lower_mode: true,
+            lower_mode: false,
+            kanji_mode: false,
             prog_buff: BTreeMap::new(), 
             t_com: HashMap::new(),
         }
@@ -162,7 +184,7 @@ impl Msxterm {
         // BTreeMapを文字列に変換してファイルに書き込む
         for (line_number, program) in self.prog_buff.iter() {
             let line = format!("{} {}\n", line_number, program);
-            writer.write(line.as_bytes()).expect("Failed to write to file");
+            writer.write_all(line.as_bytes()).expect("Failed to write to file");
         }
         // ファイルをクローズする
         writer.flush().expect("Failed to flush buffer");
@@ -172,13 +194,13 @@ impl Msxterm {
 }
 
 pub fn parse_command(command: &str) -> (Option<u16>, Option<u16>) {
-    let mut parts = command.trim().split(" ");
+    let mut parts = command.trim().split(' ');
     let _ = parts.next(); // Skip the command name
     let range = parts.next();
     match range {
         None => (None, None),
         Some(range) => {
-            let mut range_parts = range.split("-");
+            let mut range_parts = range.split('-');
             let start = range_parts.next().and_then(|x| x.parse().ok());
             let end = range_parts.next().and_then(|x| x.parse().ok());
             (start, end)
@@ -189,8 +211,9 @@ pub fn parse_command(command: &str) -> (Option<u16>, Option<u16>) {
 enum Command {
     DumpModeOn,
     DumpModeOff,
+    KanjiModeOn,
+    KanjiModeOff,
 }
-
 
 #[test]
 fn test_msxterm () {
@@ -274,6 +297,18 @@ fn test_lower_program() {
     println!("{}", result);
 }
 
+fn serial_port_list() {
+    // シリアルポートの情報を取得する
+    let ports = SerialPort::available_ports().expect("Failed to get serial port list");
+
+    // USB接続されたシリアルポートを検索する
+    for port in ports {
+        let str = port.into_os_string().into_string().unwrap();
+        println!("USB Serial Port found: {}", str);
+    }
+}
+
+
 fn main() -> Result<()> {
     // 変数初期化
     let mut msxterm = Msxterm::new();
@@ -281,19 +316,51 @@ fn main() -> Result<()> {
 
     // コマンドライン引数取得
     let args = Args::parse();
-    println!("{}", args.host);
-    println!("{}", args.file);
- 
+    if args.port_list {
+        serial_port_list();
+        return Ok(());
+    }
+    let target = match args.target {
+        Some(target) => {
+            target
+        },
+        _ => {
+             "".to_string()    
+         }
+    };
+/*
+    println!("file {}", args.file);
+    println!("serial {}", args.serial);
+    println!("portlist {}", args.port_list);
+*/
     // エディタを生成
     let mut rl = DefaultEditor::new()?;
+    match args.editor {
+        Some(ed) =>  {
+            if ed.eq("emacs") {
+                rl.set_edit_mode(EditMode::Emacs);
+            } else if ed.eq("vi") {
+                rl.set_edit_mode(EditMode::Vi);
+            }
+        },
+        _ => {}
+    }
+
     let mut printer = rl.create_external_printer()?;
     if rl.load_history(&args.file).is_err() {
         println!("No previous history.");
     }
 
     // ソケットを接続
-    let server_address = args.host;
+    let server_address = target.clone();
     println!("Connecting... {}", server_address);
+
+/*
+    let mut conn = connection::create_connection(&target);
+    let mut conn_read  = Arc::new(Mutec::new(conn));
+    let mut conn_write = Arc::new(Mutec::new(conn));
+*/
+
     let mut stream;
     let r = TcpStream::connect(server_address);
     match r {
@@ -309,28 +376,45 @@ fn main() -> Result<()> {
 
     // 通信スレッドとメインスレッド間でやりとりするチャンネルを作成する
     let (tx, rx): (Sender<Command>, Receiver<Command>) = channel();
+
     // 受信用スレッドを作成
     let stream_clone = stream.try_clone().expect("Failed to clone stream");
     let receive_thread = thread::spawn(move || {
         let mut dump_mode = false;
+        let mut kanji_mode = false;
         let mut reader = std::io::BufReader::new(&stream_clone);
         loop {
             if let Ok(command) = rx.recv_timeout(Duration::from_millis(1)) {
                 match command {
                     Command::DumpModeOn => dump_mode = true,
                     Command::DumpModeOff => dump_mode = false,
+                    Command::KanjiModeOn => kanji_mode = true,
+                    Command::KanjiModeOff => kanji_mode = false,
                 }
             }
             let mut byte_buff: Vec<u8> = [0x00_u8; 0].to_vec();
-            let size = reader.read_until(U_LF, &mut byte_buff).unwrap();
-            if size == 0 {
-                break;
+            let result = reader.read_until(U_LF, &mut byte_buff);
+            match result {
+                Ok(size) => {
+                    if size == 0 {
+                        printer.print("Tcp disconnect".to_string()).expect("External print failure");
+                        break;
+                    }    
+                },
+                Err(e) => {
+                    printer.print(e.to_string()).expect("External print failure");
+                    break;
+                }
             }
             if dump_mode {
                 let recv_buff = dump_hex(byte_buff);
                 printer.print(recv_buff).expect("External print failure");
             } else {
-                let recv_buff = msxcode::msx_ascii_to_string(byte_buff);
+                let recv_buff = if kanji_mode {
+                    msxcode::msx_kanji_to_string(byte_buff)
+                } else {
+                    msxcode::msx_ascii_to_string(byte_buff)
+                };
                 printer.print(recv_buff).expect("External print failure");    
             }
         }
@@ -349,12 +433,12 @@ fn main() -> Result<()> {
 
                     if line.starts_with("#quit") {
                         // TCP 接続終了
-                        stream.shutdown(Shutdown::Both)?;
+                        stream.shutdown(Shutdown::Both).expect("Shutdown Error");
                         break 'input;
                     }
                     if line.starts_with("#hex") {
                         let hex = hex2u8(line);
-                        stream.write_all(&hex)?;
+                        stream.write(&hex).expect("Failed to write to server");
                         continue;
                     }
                     if line.starts_with("#dump_on") {
@@ -375,6 +459,26 @@ fn main() -> Result<()> {
                     if line.starts_with("#lowsend_off") {
                         msxterm.lower_mode = false;
                         println!("Lower Case send mode Off");
+                        continue;
+                    }
+                    if line.starts_with("#kanji_on") {
+                        tx.send(Command::KanjiModeOn).expect("Thread sync Error");
+                        msxterm.kanji_mode = true;
+                        println!("Kanji mode On");
+                        continue;                        
+                    }
+                    if line.starts_with("#kanji_off") {
+                        tx.send(Command::KanjiModeOff).expect("Thread sync Error");
+                        msxterm.kanji_mode = false;
+                        println!("Kanji mode Off");
+                        continue;
+                    }
+                    if line.starts_with("#emacs") {
+                        rl.set_edit_mode(EditMode::Emacs);
+                        continue;
+                    }
+                    if line.starts_with("#vi") {
+                        rl.set_edit_mode(EditMode::Vi);
                         continue;
                     }
                     if line.starts_with("#clear_history") {
@@ -402,7 +506,7 @@ fn main() -> Result<()> {
                                     ld_program = lower_program(&ld_program);
                                 }
                                 stream
-                                .write_all(ld_program.as_bytes())
+                                .write(ld_program.as_bytes())
                                 .expect("Failed to write to server");
                             },
                             Err(e) => {
@@ -420,7 +524,7 @@ fn main() -> Result<()> {
                         continue;
                     }
                     if line.starts_with("#save") {
-                        msxterm.save_program(&line);
+                        msxterm.save_program(line);
                         println!("Ok");
                         continue;
                     }
@@ -432,22 +536,27 @@ fn main() -> Result<()> {
                     if msxterm.lower_mode {
                         tmp2 = lower_program(&tmp2);
                     }
-                    let faces_code = msxcode::str_to_faces_code(tmp2.as_str());
+
+                    let faces_code = if msxterm.kanji_mode {
+                        msxcode::utf8_to_msx_kanji(tmp2.as_str())
+                    } else {
+                        msxcode::utf8_msx_jp_code(tmp2.as_str())
+                    };
+
                     stream
-                        .write_all(&faces_code)
-                        .expect("Failed to write to server");
+                        .write(&faces_code).expect("Failed to write");
                 }
             }
             Err(ReadlineError::Interrupted) => {
                 // break 送信
                 let buf = vec![U_BREAK];
-                stream.write_all(&buf)?;
+                stream.write(&buf).expect("Failed to write");
                 continue;
             }
             Err(ReadlineError::Eof) => {
                 // BS 送信
                 let buf = vec![U_PAUSE];
-                stream.write_all(&buf)?;
+                stream.write(&buf).expect("Failed to write");
                 continue;
             }
             Err(err) => {
@@ -462,6 +571,14 @@ fn main() -> Result<()> {
         .expect("Failed to join receive thread");
 
     // 履歴ファイル記録
-    rl.save_history(& args.file).unwrap();
+    match rl.save_history(& args.file) 
+    {
+        Ok(_) => {
+            println!("history save to {}", args.file);
+        },
+        Err(e) => {
+            println!("{}", e.to_string());
+        }
+    }
     Ok(())
 }
