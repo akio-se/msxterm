@@ -4,7 +4,7 @@
 // https://github.com/akio-se/msxterm
 //
 use std::collections::HashMap;
-use encoding_rs::{SHIFT_JIS};
+use encoding_rs::SHIFT_JIS;
 
 const U_KANA:u8 = 0xF3;
 const U_CAPS:u8 = 0xF2;
