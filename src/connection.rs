@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 //use serialport::SerialPort;
 use serial2::SerialPort;
 
-use std::net::{IpAddr};
+use std::net::IpAddr;
 use regex::Regex;
 //use std::thread;
 //use std::time::{Duration};
@@ -250,18 +250,16 @@ mod tests {
     #[test]
     fn test_create_con() {
 //      let mut contype = create_connection("/dev/cu.usbserial-569C0128081");
-        let mut contype = create_connection("192.168.128.13:2223");
+        let contype = create_connection("192.168.128.13:2223");
         match contype {
-            ConnectionType::Tcp(mut ts) => {
-                //println!("TCP {:?}", ts);
-                ts.write(b"Test TCP\r");
+            ConnectionType::Tcp( mut ts) => {
+                ts.write(b"Test TCP\r").expect("TCP/IP write err");
 
             },
-            ConnectionType::Serial(mut sr) => {
-                //println!("Serial {:?}", sr);
-                sr.write(b"Test Serial\r");
+            ConnectionType::Serial(sr) => {
+                sr.write(b"Test Serial\r").expect("serial write error");
             },
-            ConnectionType::BadParam(mut e)=> {
+            ConnectionType::BadParam(e)=> {
                 println!("error {}", e);
             }
         }
