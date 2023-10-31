@@ -126,6 +126,7 @@ enum FacesCode {
 
 enum MsxCode {
     Ascii(u8),
+    Graph(u8),
     Kana(Vec<u8>),
 }
 
@@ -472,6 +473,45 @@ pub fn utf8_msx_jp_code(input: &str) -> Vec<u8> {
         ('\u{25CB}', MsxCode::Ascii(0x84)), // 中空丸 ◯
         ('\u{25CF}', MsxCode::Ascii(0x85)), // 塗潰丸 ●
 
+        // Graph コード変換文字
+        ('月', MsxCode::Graph(0x41)),
+        ('火', MsxCode::Graph(0x42)),
+        ('水', MsxCode::Graph(0x43)),
+        ('木', MsxCode::Graph(0x44)),
+        ('金', MsxCode::Graph(0x45)),
+        ('土', MsxCode::Graph(0x46)),
+        ('日', MsxCode::Graph(0x47)),
+
+        ('年', MsxCode::Graph(0x48)),
+        ('円', MsxCode::Graph(0x49)),
+        ('時', MsxCode::Graph(0x4a)),
+        ('分', MsxCode::Graph(0x4b)),
+        ('秒', MsxCode::Graph(0x4c)),
+        ('百', MsxCode::Graph(0x4d)),
+        ('千', MsxCode::Graph(0x4e)),
+        ('万', MsxCode::Graph(0x4f)),
+
+        ('π',  MsxCode::Graph(0x50)),
+        ('┻',  MsxCode::Graph(0x51)),
+        ('┳',  MsxCode::Graph(0x52)),
+        ('┫',  MsxCode::Graph(0x53)),
+        ('┣',  MsxCode::Graph(0x54)),
+        ('╋',  MsxCode::Graph(0x55)),
+        ('┃',  MsxCode::Graph(0x56)),
+        ('━',  MsxCode::Graph(0x57)),
+
+        ('┏',  MsxCode::Graph(0x58)),
+        ('┓',  MsxCode::Graph(0x59)),
+        ('┗',  MsxCode::Graph(0x5a)),
+        ('┛',  MsxCode::Graph(0x5b)),
+        ('\u{2573}', MsxCode::Graph(0x5c)),
+        ('大', MsxCode::Graph(0x5d)),
+        ('中', MsxCode::Graph(0x5e)),
+        ('小', MsxCode::Graph(0x5f)),
+
+         
+
+
         // ひらがな
         ('を', MsxCode::Kana(vec![0x86])),
         ('ぁ', MsxCode::Kana(vec![0x87])),
@@ -696,6 +736,10 @@ pub fn utf8_msx_jp_code(input: &str) -> Vec<u8> {
                     }
                  },
                 MsxCode::Ascii(code) => {
+                    result.push(*code);
+                },
+                MsxCode::Graph(code) => {
+                    result.push(0x01);
                     result.push(*code);
                 }
             }
